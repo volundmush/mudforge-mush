@@ -18,21 +18,24 @@ from asyncpg import exceptions
 from fastapi import APIRouter, Depends, Body, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from .utils import (
+from mudforge.game.api.utils import (
     crypt_context,
     oauth2_scheme,
     get_real_ip,
     get_current_user,
     get_acting_character,
+    streaming_list
 )
-from .models import (
+
+from mudforge.game.db.models import UserModel, CharacterModel, ActiveAs
+
+from ..db.models import (
     BoardModel,
     PostModel,
-    FactionModel,
-    ActiveAs,
-    UserModel,
-    CharacterModel,
+    FactionModel
 )
+
+from ..db import boards as boards_db
 
 router = APIRouter()
 
@@ -107,13 +110,14 @@ async def list_boards(
     user: Annotated[UserModel, Depends(get_current_user)], character_id: uuid.UUID
 ):
     acting = await get_acting_character(user, character_id)
-    boards = []
-    async with mudforge.PGPOOL.acquire() as conn:
-        for board_data in await conn.fetch("SELECT * FROM board_view"):
-            board = BoardModel(**board_data)
+
+    async def board_filter(boards):
+        async for board in boards:
             if await board.access(acting, "read"):
-                boards.append(board)
-    return boards
+                yield board
+    
+    boards = await boards_db.list_boards()
+    return await streaming_list(board_filter(boards))
 
 
 @router.get("/{board_key}", response_model=BoardModel)
@@ -123,18 +127,12 @@ async def get_board(
     character_id: uuid.UUID,
 ):
     acting = await get_acting_character(user, character_id)
-    async with mudforge.PGPOOL.acquire() as conn:
-        board_data = await conn.fetchrow(
-            "SELECT * FROM board_view WHERE board_key = $1", board_key
+    board = await boards_db.get_board_by_key(board_key)
+    if not await board.access(acting, "read"):
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to read this board."
         )
-        if board_data is None:
-            raise HTTPException(status_code=404, detail="Board not found.")
-        board = BoardModel(**board_data)
-        if not await board.access(acting, "read"):
-            raise HTTPException(
-                status_code=403, detail="You do not have permission to read this board."
-            )
-        return board
+    return board
 
 
 @router.get("/{board_key}/posts", response_model=list[PostModel])
@@ -144,33 +142,33 @@ async def list_posts(
     character_id: uuid.UUID,
 ):
     acting = await get_acting_character(user, character_id)
-    async with mudforge.PGPOOL.acquire() as conn:
-        board_data = await conn.fetchrow(
-            "SELECT * FROM board_view WHERE board_key = $1", board_key
+    board = await boards_db.get_board_by_key(board_key)
+    admin = await board.access(acting, "admin")
+    if not admin and not await board.access(acting, "read"):
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to read this board."
         )
-        if board_data is None:
-            raise HTTPException(status_code=404, detail="Board not found.")
-        board = BoardModel(**board_data)
-        admin = await board.access(acting, "admin")
+
+    posts = await boards_db.list_posts_for_board(board)
+
+    if board.anonymous_name:
         if not admin:
-            if not await board.access(acting, "read"):
-                raise HTTPException(
-                    status_code=403,
-                    detail="You do not have permission to read this board.",
-                )
-        posts_data = await conn.fetch(
-            "SELECT * FROM board_post_view WHERE board_id = $1", board.id
-        )
-        posts = [PostModel(**post) for post in posts_data]
-        if board.anonymous_name:
-            if not admin:
-                for post in posts:
+            async def transform_posts():
+                async for post in posts:
                     post.spoofed_name = board.anonymous_name
                     post.character_id = None
                     post.character_name = None
-                else:
+                    yield post
+            
+            return streaming_list(transform_posts())
+        else:
+            async def transform_posts():
+                async for post in posts:
                     post.spoofed_name = f"{board.anonymous_name} ({post.spoofed_name})"
-        return posts
+                    yield post
+            return streaming_list(transform_posts())
+    
+    return streaming_list(posts)
 
 
 @router.get("/{board_key}/posts/{post_key}", response_model=PostModel)
