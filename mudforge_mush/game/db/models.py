@@ -3,6 +3,7 @@ import typing
 import uuid
 from datetime import datetime, timedelta, timezone
 from mudforge.game.lockhandler import LockHandler
+from mudforge.game.db.models import ActiveAs
 
 from pydantic import BaseModel
 from typing import Annotated, Optional
@@ -47,3 +48,21 @@ class FactionModel(BaseModel, LockHandler):
     member_permissions: set[str]
     public_permissions: set[str]
     lock_data: dict[str, str]
+
+    async def check_override(self, acting: ActiveAs, access_type: str) -> bool:
+        from .factions import get_membership
+        if not (membership_data := await get_membership(self, acting.character)):
+            return False
+        # Leaders pass everything.
+        if membership_data["rank"] <= 1:
+            return True
+        access = access_type.lower()
+        permissions = set()
+        permissions.update(self.member_permissions)
+        permissions.update(self.public_permissions)
+        permissions.update(membership_data["rank_permissions"])
+        permissions.update(membership_data["permissions"])
+        if access in permissions:
+            return True
+
+        return False

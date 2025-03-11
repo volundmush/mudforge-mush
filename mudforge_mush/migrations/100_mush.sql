@@ -83,6 +83,21 @@ CREATE TRIGGER faction_members_trigger
     AFTER INSERT OR UPDATE OR DELETE ON faction_members
     FOR EACH ROW EXECUTE FUNCTION notify_table_change();
 
+CREATE VIEW faction_members_view AS
+SELECT m.*,
+       f.name AS faction_name,
+       f.abbreviation AS faction_abbreviation,
+       f.member_permissions as faction_member_permissions,
+       f.public_permissions as faction_public_permissions,
+       r.name AS rank_name,
+       r.value AS rank_value,
+       r.permissions AS rank_permissions,
+       c.name AS character_name
+FROM faction_members m
+LEFT JOIN factions f ON f.id=m.faction_id
+LEFT JOIN characters c ON m.character_id=c.id
+LEFT JOIN faction_ranks r ON m.rank_id=r.id;
+
 -- Myrddin's BBS section
 
 CREATE TABLE boards

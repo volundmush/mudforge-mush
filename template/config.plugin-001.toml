@@ -1,7 +1,7 @@
-dynaconf_merge = True
+dynaconf_merge = true
 
 [fastapi.routers]
-#boards = "mudforge_mush.game.api.boards"
+boards = "mudforge_mush.game.api.boards"
 #channels = "mudforge_mush.game.api.channels"
 #factions = "mudforge_mush.game.api.factions"
 #radio = "mudforge_mush.game.api.radio"
@@ -9,3 +9,6 @@ dynaconf_merge = True
 
 [game.lockfuncs]
 #factions = "mudforge_mush.game.locks.factions"
+
+[portal.commands]
+boards = "mudforge_mush.portal.commands.boards"
