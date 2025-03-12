@@ -49,14 +49,14 @@ class FactionModel(BaseModel, LockHandler):
     public_permissions: set[str]
     lock_data: dict[str, str]
 
-    async def check_override(self, acting: ActiveAs, access_type: str) -> bool:
+    async def has_permission(self, character: "CharacterModel", permission: str) -> bool:
         from .factions import get_membership
-        if not (membership_data := await get_membership(self, acting.character)):
+        if not (membership_data := await get_membership(self, character)):
             return False
         # Leaders pass everything.
         if membership_data["rank"] <= 1:
             return True
-        access = access_type.lower()
+        access = permission.lower()
         permissions = set()
         permissions.update(self.member_permissions)
         permissions.update(self.public_permissions)
@@ -66,3 +66,6 @@ class FactionModel(BaseModel, LockHandler):
             return True
 
         return False
+
+    async def check_override(self, acting: ActiveAs, access_type: str) -> bool:
+        return await self.has_permission(acting.character, access_type)
