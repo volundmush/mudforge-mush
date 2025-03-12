@@ -23,7 +23,8 @@ from mudforge.game.db.models import UserModel, CharacterModel, ActiveAs
 from ..db.models import (
     BoardModel,
     PostModel,
-    FactionModel
+    FactionModel,
+    board_admin
 )
 
 from ..db import boards as boards_db, factions as factions_db
@@ -49,23 +50,49 @@ async def create_board(
         raise HTTPException(status_code=400, detail="Invalid board ID format.")
     order = int(matched.group("order"))
     faction = None
+    faction_id = None
 
     if abbr := matched.group("abbr"):
         faction = await factions_db.find_faction_abbreviation(abbr)
-        if not await faction.access(acting, "bbadmin"):
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have permission to create boards in that faction.",
-            )
-    else:
-        if acting.admin_level < 4:
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have permission to create public boards.",
-            )
+        faction_id = faction.id
+    if not await board_admin(acting, faction_id):
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to create a board."
+        )
     board = await boards_db.create_board(faction, order, board.name)
     return board
 
+
+
+@router.patch("/{board_key}", response_model=BoardModel)
+async def update_board(
+    board_key: str,
+    patch: Annotated[boards_db.PatchBoardModel, Body()],
+    user: Annotated[UserModel, Depends(get_current_user)],
+    character_id: uuid.UUID,
+):
+    acting = await get_acting_character(user, character_id)
+    board = await boards_db.get_board_by_key(board_key)
+    if not await board.is_admin(acting):
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to update this board."
+        )
+    board = await boards_db.update_board(board, patch)
+    return board
+
+@router.delete("/{board_key}", response_model=BoardModel)
+async def delete_board(user: Annotated[UserModel, Depends(get_current_user)],
+                       board_key: str,
+                       character_id: uuid.UUID):
+    acting = await get_acting_character(user, character_id)
+    board = await boards_db.get_board_by_key(board_key)
+    if not await board.is_admin(acting):
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to update this board."
+        )
+    board = await boards_db.delete_board(board)
+    return board
+    
 
 @router.get("/", response_model=typing.List[BoardModel])
 async def list_boards(

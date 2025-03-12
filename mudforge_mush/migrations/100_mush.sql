@@ -23,10 +23,11 @@ FROM character_spoofs s
 CREATE TABLE factions
 (
     id                 SERIAL PRIMARY KEY,
-    name               CITEXT       NOT NULL UNIQUE,
-    abbreviation       CITEXT       NOT NULL UNIQUE,
+    name               CITEXT       NOT NULL,
+    abbreviation       CITEXT       NOT NULL,
     created_at         TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at         TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at         TIMESTAMPTZ NULL,
     description        TEXT         NULL,
     category           VARCHAR(255) NOT NULL DEFAULT 'Uncategorized',
     private            BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -39,6 +40,9 @@ CREATE TABLE factions
     public_permissions TEXT[]       NOT NULL DEFAULT '{}',
     lock_data          JSONB       NOT NULL DEFAULT json_object()
 );
+
+CREATE UNIQUE INDEX unique_faction_name ON factions (name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX unique_faction_abbreviation ON factions (abbreviation) WHERE deleted_at IS NULL;
 
 CREATE TRIGGER factions_trigger
     AFTER INSERT OR UPDATE OR DELETE ON factions
@@ -110,17 +114,18 @@ CREATE TABLE boards
     anonymous_name TEXT      NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    lock_data      JSONB       NOT NULL DEFAULT json_object(),
+    deleted_at     TIMESTAMPTZ NULL,
+    locks      JSONB       NOT NULL DEFAULT json_object(),
     CONSTRAINT fk_faction
         FOREIGN KEY (faction_id) REFERENCES factions (id) ON DELETE RESTRICT
 );
 
 -- Gimme unique names and orders per faction
-CREATE UNIQUE INDEX unique_board_name ON boards (faction_id, name) WHERE faction_id IS NOT NULL;
-CREATE UNIQUE INDEX unique_board_order ON boards (faction_id, board_order) WHERE faction_id IS NOT NULL;
+CREATE UNIQUE INDEX unique_board_name ON boards (faction_id, name) WHERE faction_id IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX unique_board_order ON boards (faction_id, board_order) WHERE faction_id IS NOT NULL AND deleted_at IS NULL;
 -- And without a faction
-CREATE UNIQUE INDEX unique_board_name_no_faction ON boards (name) WHERE faction_id IS NULL;
-CREATE UNIQUE INDEX unique_board_order_no_faction ON boards (board_order) WHERE faction_id IS NULL;
+CREATE UNIQUE INDEX unique_board_name_no_faction ON boards (name) WHERE faction_id IS NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX unique_board_order_no_faction ON boards (board_order) WHERE faction_id IS NULL AND deleted_at IS NULL;
 
 CREATE TRIGGER boards_trigger
     AFTER INSERT OR UPDATE OR DELETE ON boards
@@ -145,6 +150,7 @@ CREATE TABLE board_posts
     body       TEXT      NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMPTZ NULL,
     CONSTRAINT fk_board
         FOREIGN KEY (board_id) REFERENCES boards (id) ON DELETE CASCADE,
     CONSTRAINT fk_spoof
@@ -152,7 +158,7 @@ CREATE TABLE board_posts
 );
 
 -- Gimme unique orders per board
-CREATE UNIQUE INDEX unique_post_order ON board_posts (board_id, post_order, sub_order);
+CREATE UNIQUE INDEX unique_post_order ON board_posts (board_id, post_order, sub_order) WHERE deleted_at IS NULL;
 
 CREATE TRIGGER boards_trigger_trigger
     AFTER INSERT OR UPDATE OR DELETE ON board_posts
@@ -206,8 +212,11 @@ CREATE TABLE channels
     description TEXT         NULL,
     created_at  TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    lock_data   JSONB       NOT NULL DEFAULT json_object()
+    deleted_at  TIMESTAMPTZ NULL,
+    locks   JSONB       NOT NULL DEFAULT json_object()
 );
+
+CREATE UNIQUE INDEX unique_channel_name ON channels (name) WHERE deleted_at IS NULL;
 
 CREATE TRIGGER channels_trigger
     AFTER INSERT OR UPDATE OR DELETE ON channels
@@ -227,6 +236,8 @@ CREATE TABLE channel_members
     CONSTRAINT fk_character
         FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX unique_channel_member ON channel_members (channel_id, character_id);
 
 CREATE TRIGGER channel_members_trigger
     AFTER INSERT OR UPDATE OR DELETE ON channel_members
