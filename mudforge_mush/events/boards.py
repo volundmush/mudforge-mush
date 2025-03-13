@@ -4,7 +4,6 @@ from mudforge.events.base import EventBase
 from rich.markup import escape
 
 class _BoardEvent(EventBase):
-    happened_at: datetime.datetime = Field(default_factory=datetime.datetime.now)
     board_key: str
     board_name: str
     faction_name: str | None
