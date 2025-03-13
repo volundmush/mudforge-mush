@@ -1,1 +1,2 @@
-mudforge @ git+https://github.com/volundmush/mudforge@main
+#mudforge @ git+https://github.com/volundmush/mudforge@main
+mudforge

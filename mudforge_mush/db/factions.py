@@ -5,10 +5,11 @@ import uuid
 from asyncpg import Connection, exceptions
 from fastapi import HTTPException, status
 
-from mudforge.game.db.base import transaction, from_pool, stream
-from mudforge.game.db.models import UserModel, CharacterModel, ActiveAs
+from mudforge.db.base import transaction, from_pool, stream
+from mudforge.models.users import UserModel
+from mudforge.models.characters import CharacterModel, ActiveAs
 
-from .models import FactionModel
+from mudforge_mush.models.factions import FactionModel
 
 @from_pool
 async def get_faction(conn: Connection, faction_id: int) -> FactionModel:
