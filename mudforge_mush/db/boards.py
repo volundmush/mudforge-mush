@@ -32,7 +32,7 @@ async def list_boards(conn: Connection) -> typing.AsyncGenerator[BoardModel, Non
 
 @stream
 async def list_posts_for_board(conn: Connection, board: BoardModel) -> typing.AsyncGenerator[BoardPostModel, None]:
-    query = "SELECT * FROM post_view WHERE board_key = $1 ORDER BY post_order,sub_order"
+    query = "SELECT * FROM board_post_view_full WHERE board_key = $1 ORDER BY post_order,sub_order"
     async for post_data in conn.cursor(query, board.board_key):
         yield BoardPostModel(**post_data)
 
@@ -48,7 +48,7 @@ async def create_board(conn: Connection, faction: FactionModel | None, board_ord
 
 @from_pool
 async def get_post_by_key(conn: Connection, board: BoardModel, post_key: str) -> BoardPostModel:
-    query = "SELECT * FROM post_view WHERE board_key = $1 AND post_key = $2"
+    query = "SELECT * FROM board_post_view_full WHERE board_key = $1 AND post_key = $2"
     post_data = await conn.fetchrow(query, board.board_key, post_key)
     if not post_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
@@ -56,18 +56,18 @@ async def get_post_by_key(conn: Connection, board: BoardModel, post_key: str) ->
 
 @transaction
 async def create_post(conn: Connection, board: BoardModel, post, user: UserModel) -> BoardPostModel:
-    max_order = await conn.fetchval("SELECT MAX(post_order) FROM posts WHERE board_id = $1", board.id)
-    post_data = await conn.fetchrow("INSERT INTO posts (board_id, title, body, post_order, sub_order, user_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *", board.id, post.title, post.body, max_order + 1, 0, post.user_id)
-    read = await conn.fetchrow("INSERT INTO post_reads (post_id, user_id) VALUES ($1, $2) RETURNING *", post_data["id"], user.id)
-    post_data = await conn.fetchrow("SELECT * FROM post_view WHERE id = $1", post_data["id"])
+    max_order = await conn.fetchval("SELECT MAX(post_order) FROM board_posts WHERE board_id = $1", board.id)
+    post_data = await conn.fetchrow("INSERT INTO board_posts (board_id, title, body, post_order, sub_order, user_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *", board.id, post.title, post.body, max_order + 1, 0, post.user_id)
+    read = await conn.fetchrow("INSERT INTO board_posts_read (post_id, user_id) VALUES ($1, $2) RETURNING *", post_data["id"], user.id)
+    post_data = await conn.fetchrow("SELECT * FROM board_post_view WHERE id = $1", post_data["id"])
     return BoardPostModel(**post_data)
 
 @transaction
 async def create_reply(conn: Connection, board: BoardModel, post: BoardPostModel, reply, user: UserModel) -> BoardPostModel:
-    sub_order = await conn.fetchval("SELECT MAX(sub_order) FROM posts WHERE board_id = $1 AND post_order = $2", board.id, post.post_order)
-    post_data = await conn.fetchrow("INSERT INTO posts (board_id, title, body, post_order, sub_order, user_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *", board.id, f"RE: {post.title}", reply.body, post.post_order, sub_order + 1, user.id)
-    read = await conn.fetchrow("INSERT INTO post_reads (post_id, user_id) VALUES ($1, $2) RETURNING *", post_data["id"], user.id)
-    post_data = await conn.fetchrow("SELECT * FROM post_view WHERE id = $1", post_data["id"])
+    sub_order = await conn.fetchval("SELECT MAX(sub_order) FROM board_posts WHERE board_id = $1 AND post_order = $2", board.id, post.post_order)
+    post_data = await conn.fetchrow("INSERT INTO board_posts (board_id, title, body, post_order, sub_order, user_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *", board.id, f"RE: {post.title}", reply.body, post.post_order, sub_order + 1, user.id)
+    read = await conn.fetchrow("INSERT INTO board_posts_read (post_id, user_id) VALUES ($1, $2) RETURNING *", post_data["id"], user.id)
+    post_data = await conn.fetchrow("SELECT * FROM board_post_view WHERE id = $1", post_data["id"])
     return BoardPostModel(**post_data)
 
 
@@ -111,8 +111,8 @@ async def delete_board(conn: Connection, board: BoardModel) -> BoardModel:
 
 @transaction
 async def delete_post(conn: Connection, post: BoardPostModel) -> BoardPostModel:
-    await conn.execute("UPDATE posts SET deleted_at=now() WHERE post_id=$1", post.id)
-    post_data = await conn.fetchrow("SELECT * FROM post_view WHERE id = $1", post.id)
+    await conn.execute("UPDATE board_posts SET deleted_at=now() WHERE post_id=$1", post.id)
+    post_data = await conn.fetchrow("SELECT * FROM board_post_view WHERE id = $1", post.id)
     return BoardPostModel(**post_data)
 
 @transaction
@@ -122,12 +122,12 @@ async def update_post(conn: Connection, post: BoardPostModel, patch: BoardPostMo
         return post
 
     if "title" in patch_data:
-        await conn.execute("UPDATE posts SET title=$1 WHERE post_id=$2", patch.title, patch.id)
+        await conn.execute("UPDATE board_posts SET title=$1 WHERE post_id=$2", patch.title, patch.id)
 
     if "body" in patch_data:
-        await conn.execute("UPDATE posts SET body=$1 WHERE post_id=$2", patch.body, patch.id)
+        await conn.execute("UPDATE board_posts SET body=$1 WHERE post_id=$2", patch.body, patch.id)
 
     # Update the updated_at timestamp
-    await conn.execute("UPDATE posts SET updated_at=now() WHERE post_id=$1", patch.id)
-    post_data = await conn.fetchrow("SELECT * FROM post_view WHERE id = $1", patch.id)
+    await conn.execute("UPDATE board_posts SET updated_at=now() WHERE post_id=$1", patch.id)
+    post_data = await conn.fetchrow("SELECT * FROM board_post_view WHERE id = $1", patch.id)
     return BoardPostModel(**post_data)

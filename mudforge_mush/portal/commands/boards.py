@@ -36,9 +36,16 @@ class BBRead(_BBSCommand):
         for board in board_list:
             categories[board["faction_name"]].append(board)
 
+        if not categories:
+            await self.send_line("No boards.")
+            return
+
         for faction, boards in categories.items():
             boards.sort(key=lambda x: x["board_order"])
-            table = self.make_table("Key", "Name", "Description", title=f"{faction} Boards" if faction else "Public Boards")
+            table = self.make_table(title=f"{faction} Boards" if faction else "Public Boards")
+            table.add_column("Key", max_width=6)
+            table.add_column("Name", max_width=20)
+            table.add_column("Description")
             for board in boards:
                 table.add_row(board["board_key"], board["name"], board["description"])
             await self.send_rich(table)
@@ -47,7 +54,14 @@ class BBRead(_BBSCommand):
         board_list = await self.api_character_call("GET", "/boards/")
         board = partial_match(self.lsargs, board_list, key=lambda b: b["board_key"])
         post_list = await self.api_character_call("GET", f"/boards/{board['board_key']}/posts")
-        table = self.make_table("Key", "Title", "Author", "PostDate", title=board["name"])
+        if not post_list:
+            await self.send_line("No posts.")
+            return
+        table = self.make_table(title=board["name"])
+        table.add_column("Key", max_width=6)
+        table.add_column("Title", max_width=20)
+        table.add_column("Author", max_width=20)
+        table.add_column("PostDate")
         for post in post_list:
             table.add_row(post["post_key"], post["title"], post["spoofed_name"], post["created_at"])
         await self.send_rich(table)
